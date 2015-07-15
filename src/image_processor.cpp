@@ -317,7 +317,7 @@ void ImageProcessor::rotate(cv::Mat& src, double angle, cv::Mat& dst){
     cv::Point2f pt(len/2., len/2.);
     cv::Mat r = cv::getRotationMatrix2D(pt,angle,1.0);
 
-    cv::warpAffine(src,dst,r,cv::Size(len,len));
+    cv::warpAffine(src,dst,r,cv::Size(len,len),cv::INTER_LINEAR,cv::BORDER_REFLECT_101);
 }
 
 void ImageProcessor::SetLabelHistEqParams(bool apply, bool patch_prior,
