@@ -305,11 +305,19 @@ void ImageProcessor::SetClaheParams(bool apply, float clip_limit) {
 
 void ImageProcessor::SetRotationParams(bool apply) {
   apply_rotation_ = apply;
-  rotation_rand_ = GetRandomOffset(0, 3);
+  rotation_rand_ = GetRandomOffset(0, 359);
 }
 void ImageProcessor::SetPatchMirrorParams(bool apply) {
   apply_patch_mirroring_ = apply;
   patch_mirror_rand_ = GetRandomOffset(0, 2);
+}
+
+void ImageProcessor::rotate(cv::Mat& src, double angle, cv::Mat& dst){
+    int len = std::max(src.cols, src.cols);
+    cv::Point2f pt(len/2., len/2.);
+    cv::Mat r = cv::getRotationMatrix2D(pt,angle,1.0);
+
+    cv::warpAffine(src,dst,r,cv::Size(len,len));
 }
 
 void ImageProcessor::SetLabelHistEqParams(bool apply, bool patch_prior,
@@ -399,28 +407,40 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
     cv::Mat tmp_patch;
     cv::Mat tmp_label;
 
-    switch (rotation_rand_()) {
-      case 0:
+    int rand_angle = rotation_rand_();
+
+    if (rand_angle != 0){
+        rotate(patch, rand_angle*1.0, rotate_patch);
+        rotate(label, rand_angle*1.0, rotate_label);
+        //std::cout << rand_angle << std::endl;
+    } else {
+        // don't change anything
         rotate_patch = patch;
         rotate_label = label;
-        break;
-      case 1:
-        tmp_patch = patch.t();
-        tmp_label = label.t();
-        cv::flip(tmp_patch, rotate_patch, 1);
-        cv::flip(tmp_label, rotate_label, 1);
-        break;
-      case 2:
-        cv::flip(patch, rotate_patch, -1);
-        cv::flip(label, rotate_label, -1);
-        break;
-      case 3:
-        tmp_patch = patch.t();
-        tmp_label = label.t();
-        cv::flip(tmp_patch, rotate_patch, 0);
-        cv::flip(tmp_label, rotate_label, 0);
-        break;
     }
+
+//    switch (rotation_rand_()) {
+//      case 0:
+//        rotate_patch = patch;
+//        rotate_label = label;
+//        break;
+//      case 1:
+//        tmp_patch = patch.t();
+//        tmp_label = label.t();
+//        cv::flip(tmp_patch, rotate_patch, 1);
+//        cv::flip(tmp_label, rotate_label, 1);
+//        break;
+//      case 2:
+//        cv::flip(patch, rotate_patch, -1);
+//        cv::flip(label, rotate_label, -1);
+//        break;
+//      case 3:
+//        tmp_patch = patch.t();
+//        tmp_label = label.t();
+//        cv::flip(tmp_patch, rotate_patch, 0);
+//        cv::flip(tmp_label, rotate_label, 0);
+//        break;
+//    }
 
     patch = rotate_patch;
     label = rotate_label;

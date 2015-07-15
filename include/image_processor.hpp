@@ -26,6 +26,7 @@ class ImageProcessor {
   void SetClaheParams(bool apply, float clip_limit);
   void SetBlurParams(bool apply, float mu, float std, int blur_size);
   void SetCropParams(int image_crop, int label_crop);
+  void rotate(cv::Mat& src, double angle, cv::Mat& dst);
   void SetNormalizationParams(bool apply);
 
   void SetRotationParams(bool apply);
