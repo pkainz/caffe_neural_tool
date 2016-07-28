@@ -6,7 +6,7 @@ include $(CONFIG_FILE)
 
 # Compiler configuration
 CXX=g++
-CXXFLAGS = -Wall -std=c++11 -fopenmp -Wno-sign-compare
+CXXFLAGS = -Wall -std=c++11 -fopenmp -Wno-sign-compare -DUSE_OPENCV
 CXXDBG = -O0 -g
 CXXRUN = -O3
 
@@ -52,6 +52,10 @@ else
 				-lboost_system -lboost_thread -lboost_program_options -lboost_filesystem -lboost_python -lpython2.7
 endif
 
+ifeq ($(USE_INDEX_64),1)
+	CXXFLAGS += -DUSE_INDEX_64
+endif
+
 ifeq ($(USE_GREENTEA), 1)
 	# Find a valid OpenCL library
 	ifdef OPENCL_INC
@@ -90,7 +94,7 @@ endif
 ifeq ($(USE_CUDA), 1)
 	CXXFLAGS += -DUSE_CUDA
 	INCLUDE += -I$(CUDA_DIR)/include
-	LIBRARY += -L$(CUDA_DIR)/lib64/ -lcudart -lcublas -lcurand
+	LIBRARY += -L$(CUDA_DIR)/lib64/ -L$(CUDA_DIR)/lib64/stubs -lcudart -lcublas -lcurand -lnvrtc -lcuda
 	ifeq ($(USE_CUDNN), 1)
 		LIBRARY += -lcudnn
 	endif
@@ -131,3 +135,7 @@ $(BUILD):
 # Clean target
 clean:
 	rm -r -f $(BUILD)
+	rm -r -f $(PROTO)/caffetool.pb.cc
+	rm -r -f $(PROTO)/caffetool.pb.h
+	rm -r -f $(SRC)/caffetool.pb.cpp
+	rm -r -f $(INC)/caffetool.pb.h

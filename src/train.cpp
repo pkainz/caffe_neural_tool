@@ -5,9 +5,12 @@
  *      Author: Fabian Tschopp
  */
 
+#include "process.hpp"
 #include "train.hpp"
 #include "filesystem_utils.hpp"
 #include "utils.hpp"
+#include "caffe/layers/memory_data_layer.hpp"
+
 
 namespace caffe_neural {
 
@@ -40,8 +43,8 @@ int Train(ToolParam &tool_param, CommonSettings &settings) {
 
   int test_interval = solver_param.has_test_interval()?solver_param.test_interval():-1;
 
-  shared_ptr<caffe::Solver<float> > solver(
-      caffe::GetSolver<float>(solver_param));
+  shared_ptr<caffe::Solver<float> >
+        solver(caffe::SolverRegistry<float>::CreateSolver(solver_param));
 
   if(train_param.has_solverstate()) {
     // Continue from previous solverstate
@@ -200,7 +203,7 @@ int Train(ToolParam &tool_param, CommonSettings &settings) {
 
     if(settings.debug) {
       for (unsigned int k = 0; k < nr_labels + 1; ++k) {
-        std::cout << "Label: " << k << ", " << labelcounter[k] << std::endl;
+        std::cout << "Label: " << ((int)k - 1) << ", " << labelcounter[k] << std::endl;
       }
     }
 
@@ -233,18 +236,25 @@ int Train(ToolParam &tool_param, CommonSettings &settings) {
     }
 
     // The labels
-    std::vector<int> lalabels;
+    std::vector<int_tp> lalabels;
     lalabels.push_back(0);
     boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
         train_net->layers()[0])->AddMatVector(labels, lalabels);
 
     // The images
-    std::vector<int> imlabels;
+    std::vector<int_tp> imlabels;
     imlabels.push_back(0);
     boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(
         train_net->layers()[1])->AddMatVector(images, imlabels);
 
-    solver->Step(1);
+    solver->Step(1L);
+
+    if (train_param.has_filter_output()) {
+      FilterOutputParam filter_param = train_param.filter_output();
+      if (filter_param.has_output_filters() && filter_param.output_filters() && filter_param.has_output()) {
+        ExportFilters(solver->net().get(), filter_param.output(), bofs::path("train"), 0, 0, 0, true);
+      }
+    }
 
     if(test_interval > -1 && i % test_interval == 0) {
       // TODO: Run tests with the testset and testnet

@@ -14,18 +14,20 @@
 #include <cassert>
 #include "filesystem_utils.hpp"
 #include "utils.hpp"
+#include "caffe/layers/memory_data_layer.hpp"
 
 namespace caffe_neural {
+
 
 void FillNet(shared_ptr< Layer<float> > data_layer,
              shared_ptr< Layer<float> > label_layer, int num_output) {
 
   std::function<float()> rfu = GetRandomUniform<float>(-1.0, 1.0);
-  std::function<float()> riu = GetRandomUniform(0, num_output);
+  std::function<float()> riu = GetRandomUniform(0, num_output - 1);
 
   if (data_layer != NULL) {
     std::vector<cv::Mat> images;
-    std::vector<int> labels;
+    std::vector<int_tp> labels;
 
     shared_ptr<caffe::MemoryDataLayer<float>> data_layer_ptr =
         boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(data_layer);
@@ -54,7 +56,7 @@ void FillNet(shared_ptr< Layer<float> > data_layer,
 
   if (label_layer != NULL) {
     std::vector<cv::Mat> images;
-    std::vector<int> labels;
+    std::vector<int_tp> labels;
 
     shared_ptr<caffe::MemoryDataLayer<float>> layer_ptr =
         boost::dynamic_pointer_cast<caffe::MemoryDataLayer<float>>(label_layer);
@@ -115,10 +117,10 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
   if (benchmark_param.has_train_index()) {
     caffe::SolverParameter solver_param;
     caffe::ReadProtoFromTextFileOrDie(proto_solver, &solver_param);
-    shared_ptr<caffe::Solver<float> > solver(
-        caffe::GetSolver<float>(solver_param));
+    shared_ptr<caffe::Solver<float> >
+          solver(caffe::SolverRegistry<float>::CreateSolver(solver_param));
     boost::shared_ptr<caffe::Net<float>> net = solver->net();
-    net->layers()[0]->device_context()->ResetPeakMemoryUsage();
+    net->layers()[0L]->get_device()->ResetPeakMemoryUsage();
 
     std::vector<double> layer_forward_times(net->layers().size());
     std::vector<double> layer_backward_times(net->layers().size());
@@ -132,10 +134,10 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       tmp_time = 0;
 
       // Benchmark 1: Layer wise measurements (forward)
-      for (int l = 0; l < net->layers().size(); ++l) {
+      for (int_tp l = 0; l < net->layers().size(); ++l) {
         t_start = std::chrono::high_resolution_clock::now();
         net->ForwardFromTo(l, l);
-        Caffe::Synchronize(net->layers()[l]->device_context()->id());
+        Caffe::Synchronize(net->layers()[l]->get_device()->list_id());
         t_end = std::chrono::high_resolution_clock::now();
         tmp_time += (t_end - t_start).count();
         if (run >= warmup_runs) {
@@ -148,10 +150,10 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       tmp_time = 0;
 
       // Benchmark 2: Layer wise measurements (backward)
-      for (int l = net->layers().size() - 1; l >= 0; --l) {
+      for (int_tp l = net->layers().size() - 1; l >= 0; --l) {
         t_start = std::chrono::high_resolution_clock::now();
         net->BackwardFromTo(l, l);
-        Caffe::Synchronize(net->layers()[l]->device_context()->id());
+        Caffe::Synchronize(net->layers()[l]->get_device()->list_id());
         t_end = std::chrono::high_resolution_clock::now();
         tmp_time += (t_end - t_start).count();
         if (run >= warmup_runs) {
@@ -170,7 +172,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       t_start = std::chrono::high_resolution_clock::now();
       net->ForwardPrefilled();
       Caffe::Synchronize(
-          net->layers()[net->layers().size() - 1]->device_context()->id());
+          net->layers()[net->layers().size() - 1]->get_device()->list_id());
       t_end = std::chrono::high_resolution_clock::now();
       LOG(INFO) << "Forward pass: " << std::setprecision(10)
           << (double)((t_end - t_start).count())/((double)1e6) << " ms";
@@ -181,7 +183,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       // Benchmark 4: Whole backward pass
       t_start = std::chrono::high_resolution_clock::now();
       net->Backward();
-      Caffe::Synchronize(net->layers()[0]->device_context()->id());
+      Caffe::Synchronize(net->layers()[0]->get_device()->list_id());
       t_end = std::chrono::high_resolution_clock::now();
       LOG(INFO) << "Backward pass: " << std::setprecision(10)
           << (double)((t_end - t_start).count())/((double)1e6) << " ms";
@@ -204,6 +206,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
         out_file << l << ";" << layers[l] << ";"
                  << std::setprecision(10)
                  << layer_forward_times[l] / ((double) bench_runs * 1e6)
+                 << ";" << net->layers()[l]->ForwardFlops()
                  << std::endl;
       }
       out_file.close();
@@ -220,6 +223,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
         out_file << l << ";" << layers[l] << ";"
                  << std::setprecision(10)
                  << layer_backward_times[l] / ((double) bench_runs * 1e6)
+                 << ";" << net->layers()[l]->BackwardFlops()
                  << std::endl;
       }
       out_file.close();
@@ -252,8 +256,11 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       assert(out_file.is_open());
 
       out_file << "Peak memory usage;"
-          << net->layers()[0]->device_context()->peak_memory_usage()
+          << net->layers()[0]->get_device()->peak_memory_usage()
           << std::endl;
+      for(int i = 0; i < net->blobs().size(); ++i) {
+        out_file << net->blob_names()[i] << ";" << net->blobs()[i]->count() * sizeof(float) << std::endl;
+      }
       out_file.close();
     }
 
@@ -261,8 +268,8 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
 
   // Benchmark block 2: Processing Net
   if (benchmark_param.has_process_index()) {
-    Net<float> net(process_net, caffe::TEST);
-    net.layers()[0]->device_context()->ResetPeakMemoryUsage();
+    Net<float> net(process_net, caffe::TEST, Caffe::GetDefaultDevice());
+    net.layers()[0]->get_device()->ResetPeakMemoryUsage();
 
     std::vector<double> layer_forward_times(net.layers().size());
     double total_forward_time = 0;
@@ -276,7 +283,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       for (int l = 0; l < net.layers().size(); ++l) {
         t_start = std::chrono::high_resolution_clock::now();
         net.ForwardFromTo(l, l);
-        Caffe::Synchronize(net.layers()[l]->device_context()->id());
+        Caffe::Synchronize(net.layers()[l]->get_device()->list_id());
         t_end = std::chrono::high_resolution_clock::now();
         tmp_time += (t_end - t_start).count();
         if (run >= warmup_runs) {
@@ -293,7 +300,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       t_start = std::chrono::high_resolution_clock::now();
       net.ForwardPrefilled();
       Caffe::Synchronize(
-          net.layers()[net.layers().size() - 1]->device_context()->id());
+          net.layers()[net.layers().size() - 1]->get_device()->list_id());
       t_end = std::chrono::high_resolution_clock::now();
       LOG(INFO) << "Forward pass: " << std::setprecision(10)
           << (double)((t_end - t_start).count())/((double)1e6) << " ms";
@@ -316,6 +323,7 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
         out_file << l << ";" << layers[l] << ";"
                  << std::setprecision(10)
                  << layer_forward_times[l] / ((double) bench_runs * 1e6)
+                 << ";" << net.layers()[l]->ForwardFlops()
                  << std::endl;
       }
       out_file.close();
@@ -344,8 +352,11 @@ int Benchmark(ToolParam &tool_param, CommonSettings &settings) {
       assert(out_file.is_open());
 
       out_file << "Peak memory usage;"
-          << net.layers()[0]->device_context()->peak_memory_usage()
+          << net.layers()[0]->get_device()->peak_memory_usage()
           << std::endl;
+      for(int i = 0; i < net.blobs().size(); ++i) {
+        out_file << net.blob_names()[i] << ";" << net.blobs()[i]->count() * sizeof(float) << std::endl;
+      }
       out_file.close();
     }
   }
