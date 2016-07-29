@@ -78,6 +78,13 @@ int Train(ToolParam &tool_param, CommonSettings &settings) {
     image_processor.SetPatchMirrorParams(preprocessor_param.has_mirror() && preprocessor_param.mirror());
     image_processor.SetNormalizationParams(preprocessor_param.has_normalization() && preprocessor_param.normalization());
 
+    if (preprocessor_param.has_intshift()){
+        image_processor.SetIntShiftParams(true,
+                                          preprocessor_param.intshift().use_hsv(),
+                                          preprocessor_param.intshift().range());
+    }
+
+
     if(preprocessor_param.has_label_consolidate()) {
       LabelConsolidateParam label_consolidate_param = preprocessor_param.label_consolidate();
       std::vector<int> con_labels;

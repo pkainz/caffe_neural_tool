@@ -76,6 +76,7 @@ message PreprocessorParam {
   optional PrepBlurParam blur = 7;
   optional PrepDeformParam deform = 8;
   optional LabelConsolidateParam label_consolidate = 9;
+  optional IntShiftParam intshift = 10;
 }
 
 message PrepCropParam {
@@ -105,4 +106,9 @@ message PrepHistEqParam {
   optional bool masking = 2 [default = false];
   repeated float label_boost = 3;
   optional float border_boost = 4 [default = 1.0];
+}
+
+message IntShiftParam {
+  optional bool use_hsv = 1 [default = false];
+  optional int32 range = 2;
 }

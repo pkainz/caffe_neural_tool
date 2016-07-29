@@ -31,6 +31,7 @@ class ImageProcessor {
 
   void SetRotationParams(bool apply);
   void SetPatchMirrorParams(bool apply);
+  void SetIntShiftParams(bool apply, bool use_hsv, int range);
 
   void SetLabelHistEqParams(bool apply, bool patch_prior, bool mask_prob,
                             std::vector<float> label_boost);
@@ -89,6 +90,12 @@ class ImageProcessor {
   // Patch mirroring
   bool apply_patch_mirroring_ = false;
   std::function<unsigned int()> patch_mirror_rand_;
+
+  // intensity shifting
+  bool apply_intensity_shift_ = false;
+  bool use_hsv_ = false;
+  int intensity_shift_range_;
+  std::function<int()> random_intrange_selector_;
 
   // Label histrogram equalization
   bool apply_label_hist_eq_ = false;

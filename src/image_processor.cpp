@@ -42,6 +42,13 @@ void ImageProcessor::SetNormalizationParams(bool apply) {
   apply_normalization_ = apply;
 }
 
+void ImageProcessor::SetIntShiftParams(bool apply, bool use_hsv, int range){
+  apply_intensity_shift_ = apply;
+  use_hsv_ = use_hsv;
+  intensity_shift_range_ = range;
+  random_intrange_selector_ = GetRandomUniform(-range, range);
+}
+
 void ImageProcessor::ClearImages() {
   raw_images_.clear();
   label_images_.clear();
@@ -230,7 +237,7 @@ int ImageProcessor::Init() {
 
 
       // Loop over all images
-#pragma omp parallel for
+//#pragma omp parallel for
       for (unsigned int k = 0; k < label_images_.size(); ++k) {
         cv::Mat label_image = label_images_[k];
         std::vector<long> patch_label_count(nr_labels_);
@@ -267,7 +274,7 @@ int ImageProcessor::Init() {
             }
 //            label_running_probability_[k * off_size_x * off_size_y
 //                + y * off_size_x + x] = patch_weight;
-            int idx__ = off_size_x_[k] * off_size_y_[k] + y * off_size_x_[k] + x;
+            unsigned int idx__ = cum_sum_[k] + y * off_size_x_[k] + x;
             //std::cout << idx__ << std::endl;
             label_running_probability_[idx__] = patch_weight;
           }
@@ -452,6 +459,32 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
 // Deep copy so that the original image in storage doesn't get messed up
   cv::Mat patch = full_image(roi_patch).clone();
   cv::Mat label = full_label(roi_label).clone();
+
+  if (apply_intensity_shift_) {
+
+      // convert img patch to hsv
+      cv::Mat patch_hsv;
+      cv::cvtColor(patch, patch_hsv, cv::COLOR_BGR2HSV);
+
+      // apply intensity shift in hsv
+      std::vector<cv::Mat> channels;
+      cv::split(patch_hsv,channels);
+
+      double range_ = (double) random_intrange_selector_();
+      //std::cout << range_ << std::endl;
+      channels[0] = channels[0] + range_; // add scalar
+
+      // merge channels back to patch
+      cv::merge(channels,patch_hsv);
+
+      if (!use_hsv_){
+          cv::cvtColor(patch_hsv, patch, cv::COLOR_HSV2BGR);
+      } else {
+          // stay in HSV color space
+          patch = patch_hsv;
+      }
+  }
+
 
   if (apply_patch_mirroring_) {
     int flipcode = patch_mirror_rand_() - 1;
