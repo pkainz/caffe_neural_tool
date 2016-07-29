@@ -164,6 +164,7 @@ int ImageProcessor::Init() {
   cum_sum_.clear();
   cum_sum_.push_back(0);
   for (unsigned int k = 0; k < label_images_.size(); ++k) {
+
       // record rows/cols for images
       image_size_x_.push_back(label_images_[k].cols - 2 * border_size_);
       image_size_y_.push_back(label_images_[k].rows - 2 * border_size_);
@@ -171,6 +172,10 @@ int ImageProcessor::Init() {
       // record off_sizes for each image
       off_size_x_.push_back((image_size_x_[k] - patch_size_) + 1);
       off_size_y_.push_back((image_size_y_[k] - patch_size_) + 1);
+
+      // check that x and y are larger than 0
+      assert(off_size_x_[k] > 0);
+      assert(off_size_y_[k] > 0);
 
       // compute the cumulative sum of pixels within the off_size_
       cumsum += (off_size_x_[k] * off_size_y_[k]);
