@@ -45,17 +45,20 @@ class ImageProcessor {
 
  protected:
 
-  std::vector<cv::Mat> raw_images_;
-  std::vector<cv::Mat> label_images_;
-  std::vector<std::vector<cv::Mat>> label_stack_;
+  std::vector<cv::Mat> raw_images_;   // single raw images
+  std::vector<cv::Mat> label_images_; // single 8-bit label images
+  std::vector<std::vector<cv::Mat>> label_stack_; //
   std::vector<int> image_number_;
+  std::vector<unsigned long> cum_sum_;
 
   // General parameters
-  int image_size_x_;
-  int image_size_y_;
+  std::vector<int> image_size_x_;
+  std::vector<int> image_size_y_;
   int patch_size_;
   int nr_labels_;
   std::function<double()> offset_selector_;
+  std::vector<int> off_size_x_;
+  std::vector<int> off_size_y_;
 
   // Normalization parameters
   bool apply_normalization_ = false;
@@ -66,7 +69,7 @@ class ImageProcessor {
 
   // Border parameters
   bool apply_border_reflect_ = false;
-  int border_size_;
+  int border_size_;  // = 0.5 * padding in prototxt
 
   // CLAHE parameters
   bool apply_clahe_ = false;

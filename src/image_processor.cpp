@@ -46,6 +46,12 @@ void ImageProcessor::ClearImages() {
   raw_images_.clear();
   label_images_.clear();
   image_number_.clear();
+
+  // overall statistics
+  image_size_x_.clear();
+  image_size_y_.clear();
+  off_size_x_.clear();
+  off_size_y_.clear();
 }
 
 void ImageProcessor::SetLabelConsolidateParams(bool apply, std::vector<int> labels) {
@@ -117,9 +123,9 @@ int ImageProcessor::Init() {
 
     std::set<int> labelset;
 
-    for (unsigned int j = 0; j < label_stack_.size(); ++j) {
-      for (int y = 0; y < label_stack_[j][0].rows; ++y) {
-        for (int x = 0; x < label_stack_[j][0].cols; ++x) {
+    for (unsigned int j = 0; j < label_stack_.size(); ++j) {// for all images
+      for (int y = 0; y < label_stack_[j][0].rows; ++y) {   // for all rows
+        for (int x = 0; x < label_stack_[j][0].cols; ++x) { // for all cols
           int ks = label_stack_[j][0].at<unsigned char>(y, x);
           // Label not yet registered
           if (labelset.find(ks) == labelset.end()) {
@@ -128,14 +134,13 @@ int ImageProcessor::Init() {
         }
       }
     }
-
-    for (unsigned int j = 0; j < label_stack_.size(); ++j) {
-      cv::Mat dst_label(label_stack_[j][0].rows, label_stack_[j][0].cols,
-      CV_32FC1);
+    // convert labels to integers starting at 0
+    for (unsigned int j = 0; j < label_stack_.size(); ++j) { // for each image
+      cv::Mat dst_label(label_stack_[j][0].rows, label_stack_[j][0].cols, CV_32FC1);
       dst_label.setTo(cv::Scalar(0.0));
 #pragma omp parallel for
-      for (int y = 0; y < label_stack_[j][0].rows; ++y) {
-        for (int x = 0; x < label_stack_[j][0].cols; ++x) {
+      for (int y = 0; y < label_stack_[j][0].rows; ++y) {    // for each row
+        for (int x = 0; x < label_stack_[j][0].cols; ++x) {  // for each col
           // Single image with many labels defined per image
           int ks = label_stack_[j][0].at<unsigned char>(y, x);
           (dst_label.at<float>(y, x)) = (float) std::distance(
@@ -153,28 +158,51 @@ int ImageProcessor::Init() {
     return -1;
   }
 
-  image_size_x_ = raw_images_[0].cols - 2 * border_size_;
-  image_size_y_ = raw_images_[0].rows - 2 * border_size_;
 
-  int off_size_x = (image_size_x_ - patch_size_) + 1;
-  int off_size_y = (image_size_y_ - patch_size_) + 1;
+  // compute the cumulative sum of pixels after each image
+  unsigned long cumsum = 0;
+  cum_sum_.clear();
+  cum_sum_.push_back(0);
+  for (unsigned int k = 0; k < label_images_.size(); ++k) {
+      // record rows/cols for images
+      image_size_x_.push_back(label_images_[k].cols - 2 * border_size_);
+      image_size_y_.push_back(label_images_[k].rows - 2 * border_size_);
 
-  offset_selector_ = GetRandomUniform<double>(
-      0, label_images_.size() * off_size_x * off_size_y);
+      // record off_sizes for each image
+      off_size_x_.push_back((image_size_x_[k] - patch_size_) + 1);
+      off_size_y_.push_back((image_size_y_[k] - patch_size_) + 1);
+
+      // compute the cumulative sum of pixels within the off_size_
+      cumsum += (off_size_x_[k] * off_size_y_[k]);
+      cum_sum_.push_back(cumsum);
+  }
+
+  // precomputes the image size from the first image in the list
+//  image_size_x_ = raw_images_[0].cols - 2 * border_size_;
+//  image_size_y_ = raw_images_[0].rows - 2 * border_size_;
+
+//  int off_size_x = (image_size_x_ - patch_size_) + 1;
+//  int off_size_y = (image_size_y_ - patch_size_) + 1;
+
+  // create a function that selects an offset location in the image
+//  offset_selector_ = GetRandomUniform<double>(
+//      0, label_images_.size() * off_size_x * off_size_y);
+
+  offset_selector_ = GetRandomUniform<double>(0, cumsum);
 
   if (apply_label_hist_eq_) {
-
+    // compute label statistics
     std::vector<long> label_count(nr_labels_);
     std::vector<double> label_freq(nr_labels_);
 
     long total_count = 0;
     for (unsigned int k = 0; k < label_images_.size(); ++k) {
       cv::Mat label_image = label_images_[k];
-      for (int y = 0; y < image_size_y_; ++y) {
-        for (int x = 0; x < image_size_x_; ++x) {
+      for (int y = 0; y < image_size_y_[k]; ++y) {
+        for (int x = 0; x < image_size_x_[k]; ++x) {
           // Label counting should be biased towards the borders, as less batches cover those parts
-          long mult = std::min(std::min(x, image_size_x_ - x), patch_size_)
-              * std::min(std::min(y, image_size_y_ - y), patch_size_);
+          long mult = std::min(std::min(x, image_size_x_[k] - x), patch_size_)
+              * std::min(std::min(y, image_size_y_[k] - y), patch_size_);
           label_count[label_image.at<float>(y, x)] += mult;
           total_count += mult;
         }
@@ -190,8 +218,10 @@ int ImageProcessor::Init() {
 
       std::vector<double> weighted_label_count(nr_labels_);
 
-      label_running_probability_.resize(
-          label_images_.size() * off_size_x * off_size_y);
+//      label_running_probability_.resize(
+//          label_images_.size() * off_size_x * off_size_y);
+
+      label_running_probability_.resize(cumsum);
 
 
       // Loop over all images
@@ -200,8 +230,8 @@ int ImageProcessor::Init() {
         cv::Mat label_image = label_images_[k];
         std::vector<long> patch_label_count(nr_labels_);
         // Loop over all possible patches
-        for (int y = 0; y < off_size_y; ++y) {
-          for (int x = 0; x < off_size_x; ++x) {
+        for (int y = 0; y < off_size_y_[k]; ++y) {
+          for (int x = 0; x < off_size_x_[k]; ++x) {
 
             if(x == 0) {
               // Fully compute the patches at the beginning of the row
@@ -230,11 +260,16 @@ int ImageProcessor::Init() {
             for (int l = 0; l < nr_labels_; ++l) {
               weighted_label_count[l] += patch_weight * patch_label_count[l];
             }
-            label_running_probability_[k * off_size_x * off_size_y
-                + y * off_size_x + x] = patch_weight;
+//            label_running_probability_[k * off_size_x * off_size_y
+//                + y * off_size_x + x] = patch_weight;
+            int idx__ = off_size_x_[k] * off_size_y_[k] + y * off_size_x_[k] + x;
+            //std::cout << idx__ << std::endl;
+            label_running_probability_[idx__] = patch_weight;
           }
         }
       }
+
+      //std::cout << "check" << std::endl;
 
       for (unsigned int k = 1; k < label_running_probability_.size(); ++k) {
         label_running_probability_[k] += label_running_probability_[k - 1];
@@ -249,8 +284,10 @@ int ImageProcessor::Init() {
         LOG(INFO) << "Label " << l << ": " << label_freq[l];
       }
 
-      offset_selector_ = GetRandomUniform<double>(
-          0, label_running_probability_[label_running_probability_.size() - 1]);
+      double end__ = label_running_probability_[label_running_probability_.size() - 1];
+      //std::cout << end__ << std::endl;
+
+      offset_selector_ = GetRandomUniform<double>(0, end__);
     }
 
     if (apply_label_pixel_mask_) {
@@ -359,8 +396,10 @@ TrainImageProcessor::TrainImageProcessor(int patch_size, int nr_labels)
 
 std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
 
+  // chooses the linear position in the set of all possibl patches
   double offset = offset_selector_();
 
+  // absolute ID of the patch location within ALL possible patches
   long abs_id = 0;
 
   if (apply_label_hist_eq_ && apply_label_patch_prior_) {
@@ -369,13 +408,32 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
     abs_id = (long) offset;
   }
 
-  int off_size_x = (image_size_x_ - patch_size_) + 1;
-  int off_size_y = (image_size_y_ - patch_size_) + 1;
+  // compute the image ID
+  // by looping over cum_sum_ and checking where the abs_id is larger
+  int img_id = -1;
+  for (int k = 0; k < cum_sum_.size(); ++k){
+    if (cum_sum_[k] > abs_id){
+        // found the image
+        img_id = k-1;
+        break;
+    }
+  }
+  assert(img_id >= 0);
 
-  int img_id = abs_id / (off_size_x * off_size_y);
-  int yoff = (abs_id - (img_id * off_size_x * off_size_y)) / off_size_x;
-  int xoff = abs_id
-      - ((img_id * off_size_x * off_size_y) + (yoff * off_size_x));
+//  int off_size_x = off_size_x_[img_id];
+//  int off_size_y = off_size_y_[img_id];
+  // TODO: compute the (random, top-left) location of the patch
+//  auto y_gen = GetRandomUniform(0,off_size_y);//(off_size_x * off_size_y) / off_size_x;
+//  auto x_gen = GetRandomUniform(0,off_size_x);//abs_id - ((img_id * off_size_x * off_size_y) + (yoff * off_size_x));
+
+//  int yoff = y_gen();
+//  int xoff = x_gen();
+//  int off_size_x = (image_size_x_ - patch_size_) + 1;
+//  int off_size_y = (image_size_y_ - patch_size_) + 1;
+//  int img_id = abs_id / (off_size_x * off_size_y);
+
+  int yoff = (abs_id - cum_sum_[img_id]) / off_size_x_[img_id]; //(abs_id -(off_size_x * off_size_y)) / off_size_x;
+  int xoff = abs_id - (cum_sum_[img_id] + (yoff * off_size_x_[img_id])); //abs_id - ((img_id * off_size_x * off_size_y) + (yoff * off_size_x));
 
   cv::Mat &full_image = raw_images_[img_id];
   cv::Mat &full_label = label_images_[img_id];
