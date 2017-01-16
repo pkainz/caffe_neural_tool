@@ -115,6 +115,6 @@ message IntShiftParam {
 }
 
 message ScaleParam {
-  optional int32 instances = 1 [default=0];
+  optional int32 instances = 1 [default = 0];
   optional float range = 2 [default = 0.0];
 }

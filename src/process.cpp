@@ -267,7 +267,7 @@ int Process(caffe_neural::ToolParam &tool_param, CommonSettings &settings) {
               (&net)->layers()[0])->AddMatVector(images, labels);
 
           float loss = 0.0;
-          const vector<Blob<float>*>& result = net.ForwardPrefilled(&loss);
+          const vector<Blob<float>*>& result = net.Forward(&loss);
 
           if(process_param.has_filter_output()) {
             FilterOutputParam filter_param = process_param.filter_output();

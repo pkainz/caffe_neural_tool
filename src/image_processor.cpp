@@ -144,9 +144,47 @@ void ImageProcessor::SubmitImage(cv::Mat raw, int img_id,
       label_stack_.push_back(labels);
   }
 
-  //std::cout << "Number of available images: " << raw_images_.size() << std::endl;
+  // std::cout << "Number of available images: " << raw_images_.size() << std::endl;
 
 }
+
+// original implementation without scaling
+//void ImageProcessor::SubmitImage(cv::Mat raw, int img_id,
+//                                 std::vector<cv::Mat> labels) {
+
+//  std::vector<cv::Mat> rawsplit;
+//  cv::split(raw, rawsplit);
+
+//  if (apply_clahe_) {
+//    for (unsigned int i = 0; i < rawsplit.size(); ++i) {
+//      cv::Mat dst;
+//      clahe_->apply(rawsplit[i], dst);
+//      rawsplit[i] = dst;
+//    }
+//  }
+
+//  cv::Mat src;
+//  cv::merge(rawsplit, src);
+//  src.convertTo(src, CV_32FC(3), 1.0 / 255.0);
+
+//  if (apply_normalization_) {
+//    cv::Mat dst;
+//    cv::normalize(src, dst, -1.0, 1.0, cv::NORM_MINMAX);
+//    src = dst;
+//  }
+
+//  if (apply_border_reflect_) {
+//    cv::Mat dst;
+//    cv::copyMakeBorder(src, dst, border_size_, border_size_, border_size_,
+//                       border_size_, IPL_BORDER_REFLECT, cv::Scalar::all(0.0));
+//    src = dst;
+//  }
+
+//  raw_images_.push_back(src);
+//  image_number_.push_back(img_id);
+//  label_stack_.push_back(labels);
+
+//}
 
 int ImageProcessor::Init() {
 
@@ -516,21 +554,21 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
   cv::Mat patch = full_image(roi_patch).clone();
   cv::Mat label = full_label(roi_label).clone();
 
-  if (apply_scaling_){
+//  if (apply_scaling_){
 
-      // make an upscaled version of the (downscaled) image patch
-      cv::Mat scaled_patch;
-      cv::Mat scaled_label;
+//      // make an upscaled version of the (downscaled) image patch
+//      cv::Mat scaled_patch;
+//      cv::Mat scaled_label;
 
-      float scale_ = random_upscale_selector_();
-      //std::cout << scale_ << std::endl;
+//      float scale_ = random_upscale_selector_();
+//      //std::cout << scale_ << std::endl;
 
-      scale_keep_size(patch, scale_, scaled_patch, cv::INTER_LINEAR);
-      scale_keep_size(label, scale_, scaled_label, cv::INTER_NEAREST);
+//      scale_keep_size(patch, scale_, scaled_patch, cv::INTER_LINEAR);
+//      scale_keep_size(label, scale_, scaled_label, cv::INTER_NEAREST);
 
-      patch = scaled_patch;
-      label = scaled_label;
-  }
+//      patch = scaled_patch;
+//      label = scaled_label;
+//  }
 
 
   if (apply_intensity_shift_) {

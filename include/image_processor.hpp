@@ -105,7 +105,7 @@ class ImageProcessor {
   // scale parameters (default is no scaling)
   bool apply_scaling_ = false;
   float scale_range_;
-  int scaled_instances_;
+  int scaled_instances_ = 0;
   std::function<double()> random_upscale_selector_;
   std::function<double()> random_downscale_selector_;
 
