@@ -84,6 +84,12 @@ int Train(ToolParam &tool_param, CommonSettings &settings) {
                                           preprocessor_param.intshift().range());
     }
 
+    if (preprocessor_param.has_scale()){
+        image_processor.SetScaleParams(true,
+                                       preprocessor_param.scale().range(),
+                                       preprocessor_param.scale().instances());
+    }
+
 
     if(preprocessor_param.has_label_consolidate()) {
       LabelConsolidateParam label_consolidate_param = preprocessor_param.label_consolidate();

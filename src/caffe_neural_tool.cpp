@@ -85,6 +85,8 @@ int main(int argc, const char** argv) {
 
   if (varmap.count("graphic")) {
     cv::namedWindow(OCVDBGW, cv::WINDOW_AUTOSIZE);
+    //cv::namedWindow(OCVIMGW, cv::WINDOW_AUTOSIZE);
+    //cv::namedWindow(OCVLBLW, cv::WINDOW_AUTOSIZE);
   }
 
   if (varmap.count("cpu")) {

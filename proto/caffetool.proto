@@ -77,6 +77,7 @@ message PreprocessorParam {
   optional PrepDeformParam deform = 8;
   optional LabelConsolidateParam label_consolidate = 9;
   optional IntShiftParam intshift = 10;
+  optional ScaleParam scale = 11;
 }
 
 message PrepCropParam {
@@ -111,4 +112,9 @@ message PrepHistEqParam {
 message IntShiftParam {
   optional bool use_hsv = 1 [default = false];
   optional int32 range = 2;
+}
+
+message ScaleParam {
+  optional int32 instances = 1 [default=0];
+  optional float range = 2 [default = 0.0];
 }

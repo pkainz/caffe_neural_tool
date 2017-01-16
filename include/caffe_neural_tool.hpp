@@ -40,6 +40,8 @@ using caffe::NetParameter;
 
 
 #define OCVDBGW "OpenCV Debug Window"
+#define OCVIMGW "OpenCV Source Image Window"
+#define OCVLBLW "OpenCV Label Image Window"
 
 
 struct CommonSettings

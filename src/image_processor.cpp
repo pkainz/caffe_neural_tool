@@ -49,6 +49,14 @@ void ImageProcessor::SetIntShiftParams(bool apply, bool use_hsv, int range){
   random_intrange_selector_ = GetRandomUniform(-range, range);
 }
 
+void ImageProcessor::SetScaleParams(bool apply, float range, int instances){
+    apply_scaling_ = apply;
+    scale_range_ = range;
+    scaled_instances_ = instances;
+    random_upscale_selector_ = GetRandomUniform<double>(1.f, 1.f + range);
+    random_downscale_selector_ = GetRandomUniform<double>(1.f - range, 1.f);
+}
+
 void ImageProcessor::ClearImages() {
   raw_images_.clear();
   label_images_.clear();
@@ -69,37 +77,74 @@ void ImageProcessor::SetLabelConsolidateParams(bool apply, std::vector<int> labe
 void ImageProcessor::SubmitImage(cv::Mat raw, int img_id,
                                  std::vector<cv::Mat> labels) {
 
-  std::vector<cv::Mat> rawsplit;
-  cv::split(raw, rawsplit);
+  // create additional 'scaled_instances_' versions of the original image
+  for (unsigned int n=0; n <= scaled_instances_; ++n){
+//      std::cout << n << std::endl;
+//      std::cout << scaled_instances_ << std::endl;
+//      std::cout << apply_scaling_ << std::endl;
 
-  if (apply_clahe_) {
-    for (unsigned int i = 0; i < rawsplit.size(); ++i) {
-      cv::Mat dst;
-      clahe_->apply(rawsplit[i], dst);
-      rawsplit[i] = dst;
-    }
+      std::vector<cv::Mat> rawsplit;
+      cv::split(raw, rawsplit);
+
+      if (apply_clahe_) {
+        for (unsigned int i = 0; i < rawsplit.size(); ++i) {
+          cv::Mat dst;
+          clahe_->apply(rawsplit[i], dst);
+          rawsplit[i] = dst;
+        }
+      }
+
+      cv::Mat src;
+      cv::merge(rawsplit, src);
+      src.convertTo(src, CV_32FC(3), 1.0 / 255.0);
+
+      if (apply_normalization_) {
+        cv::Mat dst;
+        cv::normalize(src, dst, -1.0, 1.0, cv::NORM_MINMAX);
+        src = dst;
+      }
+
+      // scale DOWN the input/label image (once) and crop or extend the border
+      if (n > 0 && apply_scaling_) {
+          cv::Mat dst;
+          std::vector<cv::Mat> dst_labels;
+
+          // draw random downscale factor
+          double scale_ = random_downscale_selector_();
+          //std::cout << scale_ << std::endl;
+
+          // ensure that the size of dst is still large enough to fit the network input layer
+          int orig_width = src.cols;
+          int orig_height = src.rows;
+
+          // compute lower boundaries for dst images
+          int dst_width = std::max((int) (scale_ * orig_width), patch_size_ + 2 * border_size_);
+          int dst_height = std::max((int) (scale_ * orig_height), patch_size_ + 2 * border_size_);
+
+          cv::resize(src, dst, cv::Size(dst_width, dst_height), cv::INTER_LINEAR);
+          src = dst;
+
+          for (unsigned int i = 0; i < labels.size(); ++i) {
+              cv::Mat dst_label;
+              cv::resize(labels[i], dst_label, cv::Size(dst_width, dst_height), cv::INTER_NEAREST);
+              dst_labels.push_back(dst_label);
+          }
+          labels = dst_labels;
+      }
+
+      if (apply_border_reflect_) {
+        cv::Mat dst;
+        cv::copyMakeBorder(src, dst, border_size_, border_size_, border_size_,
+                           border_size_, IPL_BORDER_REFLECT, cv::Scalar::all(0.0));
+        src = dst;
+      }
+
+      raw_images_.push_back(src);
+      image_number_.push_back(img_id);
+      label_stack_.push_back(labels);
   }
 
-  cv::Mat src;
-  cv::merge(rawsplit, src);
-  src.convertTo(src, CV_32FC(3), 1.0 / 255.0);
-
-  if (apply_normalization_) {
-    cv::Mat dst;
-    cv::normalize(src, dst, -1.0, 1.0, cv::NORM_MINMAX);
-    src = dst;
-  }
-
-  if (apply_border_reflect_) {
-    cv::Mat dst;
-    cv::copyMakeBorder(src, dst, border_size_, border_size_, border_size_,
-                       border_size_, IPL_BORDER_REFLECT, cv::Scalar::all(0.0));
-    src = dst;
-  }
-
-  raw_images_.push_back(src);
-  image_number_.push_back(img_id);
-  label_stack_.push_back(labels);
+  //std::cout << "Number of available images: " << raw_images_.size() << std::endl;
 
 }
 
@@ -172,7 +217,7 @@ int ImageProcessor::Init() {
   cum_sum_.push_back(0);
   for (unsigned int k = 0; k < label_images_.size(); ++k) {
 
-      // record rows/cols for images
+      // record rows/cols for label images
       image_size_x_.push_back(label_images_[k].cols - 2 * border_size_);
       image_size_y_.push_back(label_images_[k].rows - 2 * border_size_);
 
@@ -354,19 +399,30 @@ void ImageProcessor::SetClaheParams(bool apply, float clip_limit) {
 
 void ImageProcessor::SetRotationParams(bool apply) {
   apply_rotation_ = apply;
-  rotation_rand_ = GetRandomOffset(0, 359);
+  //random_rotation_ = random;
+  rotation_rand_angle_ = GetRandomOffset(0, 359);
+  rotation_rand_ = GetRandomOffset(0, 3);
 }
+
 void ImageProcessor::SetPatchMirrorParams(bool apply) {
   apply_patch_mirroring_ = apply;
   patch_mirror_rand_ = GetRandomOffset(0, 2);
 }
 
-void ImageProcessor::rotate(cv::Mat& src, double angle, cv::Mat& dst){
+void ImageProcessor::rotate(cv::Mat& src, double angle, cv::Mat& dst, cv::InterpolationFlags interpolation){
     int len = std::max(src.cols, src.cols);
     cv::Point2f pt(len/2., len/2.);
     cv::Mat r = cv::getRotationMatrix2D(pt,angle,1.0);
 
-    cv::warpAffine(src,dst,r,cv::Size(len,len),cv::INTER_LINEAR,cv::BORDER_REFLECT_101);
+    cv::warpAffine(src, dst, r, cv::Size(len,len), interpolation, cv::BORDER_REFLECT_101);
+}
+
+void ImageProcessor::scale_keep_size(cv::Mat& src, double scale, cv::Mat& dst, cv::InterpolationFlags interpolation){
+    int len = std::max(src.cols, src.cols);
+    cv::Point2f pt(len/2., len/2.);
+    cv::Mat r = cv::getRotationMatrix2D(pt, 0, scale);
+
+    cv::warpAffine(src, dst, r, cv::Size(len,len), interpolation, cv::BORDER_REFLECT_101);
 }
 
 void ImageProcessor::SetLabelHistEqParams(bool apply, bool patch_prior,
@@ -408,7 +464,7 @@ TrainImageProcessor::TrainImageProcessor(int patch_size, int nr_labels)
 
 std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
 
-  // chooses the linear position in the set of all possibl patches
+  // chooses the linear position in the set of all possible patches
   double offset = offset_selector_();
 
   // absolute ID of the patch location within ALL possible patches
@@ -456,9 +512,26 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
   cv::Rect roi_patch(xoff, yoff, actual_patch_size, actual_patch_size);
   cv::Rect roi_label(xoff, yoff, actual_label_size, actual_label_size);
 
-// Deep copy so that the original image in storage doesn't get messed up
+  // Deep copy so that the original image in storage doesn't get messed up
   cv::Mat patch = full_image(roi_patch).clone();
   cv::Mat label = full_label(roi_label).clone();
+
+  if (apply_scaling_){
+
+      // make an upscaled version of the (downscaled) image patch
+      cv::Mat scaled_patch;
+      cv::Mat scaled_label;
+
+      float scale_ = random_upscale_selector_();
+      //std::cout << scale_ << std::endl;
+
+      scale_keep_size(patch, scale_, scaled_patch, cv::INTER_LINEAR);
+      scale_keep_size(label, scale_, scaled_label, cv::INTER_NEAREST);
+
+      patch = scaled_patch;
+      label = scaled_label;
+  }
+
 
   if (apply_intensity_shift_) {
 
@@ -485,7 +558,6 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
       }
   }
 
-
   if (apply_patch_mirroring_) {
     int flipcode = patch_mirror_rand_() - 1;
     cv::Mat mirror_patch;
@@ -503,40 +575,40 @@ std::vector<cv::Mat> TrainImageProcessor::DrawPatchRandom() {
     cv::Mat tmp_patch;
     cv::Mat tmp_label;
 
-    int rand_angle = rotation_rand_();
+//    int rand_angle = rotation_angle_();
 
-    if (rand_angle != 0){
-        rotate(patch, rand_angle*1.0, rotate_patch);
-        rotate(label, rand_angle*1.0, rotate_label);
-        //std::cout << rand_angle << std::endl;
-    } else {
-        // don't change anything
-        rotate_patch = patch;
-        rotate_label = label;
-    }
-
-//    switch (rotation_rand_()) {
-//      case 0:
+//    if (rand_angle != 0){
+//        rotate(patch, rand_angle*1.0, rotate_patch, cv::INTER_LINEAR);
+//        rotate(label, rand_angle*1.0, rotate_label, cv::INTER_NEAREST);
+//        //std::cout << rand_angle << std::endl;
+//    } else {
+//        // don't change anything
 //        rotate_patch = patch;
 //        rotate_label = label;
-//        break;
-//      case 1:
-//        tmp_patch = patch.t();
-//        tmp_label = label.t();
-//        cv::flip(tmp_patch, rotate_patch, 1);
-//        cv::flip(tmp_label, rotate_label, 1);
-//        break;
-//      case 2:
-//        cv::flip(patch, rotate_patch, -1);
-//        cv::flip(label, rotate_label, -1);
-//        break;
-//      case 3:
-//        tmp_patch = patch.t();
-//        tmp_label = label.t();
-//        cv::flip(tmp_patch, rotate_patch, 0);
-//        cv::flip(tmp_label, rotate_label, 0);
-//        break;
 //    }
+
+    switch (rotation_rand_()) {
+      case 0:
+        rotate_patch = patch;
+        rotate_label = label;
+        break;
+      case 1:
+        tmp_patch = patch.t();
+        tmp_label = label.t();
+        cv::flip(tmp_patch, rotate_patch, 1);
+        cv::flip(tmp_label, rotate_label, 1);
+        break;
+      case 2:
+        cv::flip(patch, rotate_patch, -1);
+        cv::flip(label, rotate_label, -1);
+        break;
+      case 3:
+        tmp_patch = patch.t();
+        tmp_label = label.t();
+        cv::flip(tmp_patch, rotate_patch, 0);
+        cv::flip(tmp_label, rotate_label, 0);
+        break;
+    }
 
     patch = rotate_patch;
     label = rotate_label;

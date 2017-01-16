@@ -12,6 +12,7 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 #include <functional>
+#include "caffe_neural_tool.hpp"
 
 namespace caffe_neural {
 
@@ -26,12 +27,14 @@ class ImageProcessor {
   void SetClaheParams(bool apply, float clip_limit);
   void SetBlurParams(bool apply, float mu, float std, int blur_size);
   void SetCropParams(int image_crop, int label_crop);
-  void rotate(cv::Mat& src, double angle, cv::Mat& dst);
+  void rotate(cv::Mat& src, double angle, cv::Mat& dst, cv::InterpolationFlags interpolation);
   void SetNormalizationParams(bool apply);
 
   void SetRotationParams(bool apply);
   void SetPatchMirrorParams(bool apply);
   void SetIntShiftParams(bool apply, bool use_hsv, int range);
+  void SetScaleParams(bool apply, float range, int instances);
+  void scale_keep_size(cv::Mat& src, double scale, cv::Mat& dst, cv::InterpolationFlags interpolation);
 
   void SetLabelHistEqParams(bool apply, bool patch_prior, bool mask_prob,
                             std::vector<float> label_boost);
@@ -85,7 +88,9 @@ class ImageProcessor {
 
   // Simple rotation parameters
   bool apply_rotation_ = false;
+  bool random_rotation_ = false;
   std::function<unsigned int()> rotation_rand_;
+  std::function<unsigned int()> rotation_rand_angle_;
 
   // Patch mirroring
   bool apply_patch_mirroring_ = false;
@@ -96,6 +101,13 @@ class ImageProcessor {
   bool use_hsv_ = false;
   int intensity_shift_range_;
   std::function<int()> random_intrange_selector_;
+
+  // scale parameters (default is no scaling)
+  bool apply_scaling_ = false;
+  float scale_range_;
+  int scaled_instances_;
+  std::function<double()> random_upscale_selector_;
+  std::function<double()> random_downscale_selector_;
 
   // Label histrogram equalization
   bool apply_label_hist_eq_ = false;
